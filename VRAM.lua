@@ -2257,6 +2257,10 @@ __modules["Library"] = function()
 		else
 			self:_flashHint()
 		end
+
+		if self._onToggle then
+			task.spawn(self._onToggle, visible)
+		end
 	end
 
 	function Window:Toggle()
@@ -2327,16 +2331,19 @@ __modules["Library"] = function()
 			Size = UDim2.new(1, 0, 0, S.Topbar),
 		})
 
+		local titleLabel = text({
+			Parent = topbar,
+			Text = cfg.Title or "Hub",
+			FontFace = F.Bold,
+			TextSize = T.Title,
+			Position = UDim2.fromOffset(20, cfg.Subtitle and 7 or 0),
+			Size = cfg.Subtitle and UDim2.new(0.5, 0, 0, 18) or UDim2.new(0.5, 0, 1, 0),
+			TextTruncate = Enum.TextTruncate.AtEnd,
+		})
+
+		local subtitleLabel
 		if cfg.Subtitle then
-			text({
-				Parent = topbar,
-				Text = cfg.Title or "Hub",
-				FontFace = F.Bold,
-				TextSize = T.Title,
-				Position = UDim2.fromOffset(20, 7),
-				Size = UDim2.new(0.5, 0, 0, 18),
-			})
-			text({
+			subtitleLabel = text({
 				Parent = topbar,
 				Text = cfg.Subtitle,
 				TextColor3 = C.Text2,
@@ -2344,15 +2351,6 @@ __modules["Library"] = function()
 				Position = UDim2.fromOffset(20, 25),
 				Size = UDim2.new(0.5, 0, 0, 13),
 				TextTruncate = Enum.TextTruncate.AtEnd,
-			})
-		else
-			text({
-				Parent = topbar,
-				Text = cfg.Title or "Hub",
-				FontFace = F.Bold,
-				TextSize = T.Title,
-				Position = UDim2.fromOffset(20, 0),
-				Size = UDim2.new(0.5, 0, 1, 0),
 			})
 		end
 
@@ -2634,11 +2632,15 @@ __modules["Library"] = function()
 			_hintText = hintText,
 			_hintHold = cfg.HintDuration or 3.5,
 			_hintToken = 0,
+			_onToggle = cfg.OnToggle,
 			_tabs = {},
 			_connections = {},
 			_visible = true,
 			_capturing = false,
 			Instance = gui,
+			Body = body,
+			TitleLabel = titleLabel,
+			SubtitleLabel = subtitleLabel,
 		}, Window)
 
 		table.insert(window._connections, drag(root, topbar))

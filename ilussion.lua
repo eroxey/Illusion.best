@@ -2403,6 +2403,44 @@ __modules["Library"] = function()
 		Motion.to(self._root, { GroupTransparency = alpha }, preset, onDone)
 	end
 
+	--[[
+		The toggle hint is a reminder, not a status bar. It shows itself, waits, then
+		drops away — and shows again whenever the window is hidden, which is the only
+		moment the keybind actually matters.
+
+		Each flash takes a token so a pending hide from an earlier flash cannot fire
+		over a later one.
+	]]
+	function Window:_flashHint()
+		if not self._hint then
+			return
+		end
+		self._hintToken += 1
+		local token = self._hintToken
+
+		Motion.to(self._hint, {
+			GroupTransparency = 0,
+			Position = UDim2.new(0.5, 0, 1, -24),
+		}, Motion.Smooth)
+
+		task.delay(self._hintHold, function()
+			if self._hintToken == token and self._hint.Parent then
+				self:_hideHint()
+			end
+		end)
+	end
+
+	function Window:_hideHint()
+		if not self._hint then
+			return
+		end
+		self._hintToken += 1
+		Motion.to(self._hint, {
+			GroupTransparency = 1,
+			Position = UDim2.new(0.5, 0, 1, -6),
+		}, Motion.Smooth)
+	end
+
 	function Window:SetVisible(visible)
 		if self._visible == visible then
 			return
@@ -2422,7 +2460,12 @@ __modules["Library"] = function()
 			end)
 		end
 
-		Motion.to(self._hint, { [TP] = visible and 0.35 or 0 }, Motion.Smooth)
+		-- remind them of the keybind on the way out; get out of the way on the way in
+		if visible then
+			self:_hideHint()
+		else
+			self:_flashHint()
+		end
 	end
 
 	function Window:Toggle()
@@ -2431,12 +2474,14 @@ __modules["Library"] = function()
 
 	function Window:SetToggleKey(code)
 		self._toggleKey = code
-		self._hintText.Text = string.format('<b>%s</b>  <font color="#98989F">to toggle</font>', code.Name)
+		if self._hintText then
+			self._hintText.Text = string.format('<b>%s</b>  <font color="#98989F">to toggle</font>', code.Name)
+		end
 	end
 
 	function Window:Destroy()
 		Motion.to(self._scale, { Scale = 0.9 }, Motion.Snappy)
-		Motion.to(self._hint, { [TP] = 1 }, Motion.Snappy)
+		self:_hideHint()
 		self:_fade(1, Motion.Snappy, function()
 			self._gui:Destroy()
 		end)
@@ -2498,14 +2543,36 @@ __modules["Library"] = function()
 			Size = UDim2.new(1, 0, 0, S.Topbar),
 		})
 
-		text({
-			Parent = topbar,
-			Text = cfg.Title or "Hub",
-			FontFace = F.Bold,
-			TextSize = T.Title,
-			Position = UDim2.fromOffset(20, 0),
-			Size = UDim2.new(0.5, 0, 1, 0),
-		})
+		-- With a subtitle the pair is centred as a block; without one the title
+		-- centres on its own.
+		if cfg.Subtitle then
+			text({
+				Parent = topbar,
+				Text = cfg.Title or "Hub",
+				FontFace = F.Bold,
+				TextSize = T.Title,
+				Position = UDim2.fromOffset(20, 7),
+				Size = UDim2.new(0.5, 0, 0, 18),
+			})
+			text({
+				Parent = topbar,
+				Text = cfg.Subtitle,
+				TextColor3 = C.Text2,
+				TextSize = T.Caption,
+				Position = UDim2.fromOffset(20, 25),
+				Size = UDim2.new(0.5, 0, 0, 13),
+				TextTruncate = Enum.TextTruncate.AtEnd,
+			})
+		else
+			text({
+				Parent = topbar,
+				Text = cfg.Title or "Hub",
+				FontFace = F.Bold,
+				TextSize = T.Title,
+				Position = UDim2.fromOffset(20, 0),
+				Size = UDim2.new(0.5, 0, 1, 0),
+			})
+		end
 
 		local function topButton(glyph, offset, danger)
 			local holder = circle({
@@ -2740,33 +2807,45 @@ __modules["Library"] = function()
 		list(toasts, 8).VerticalAlignment = Enum.VerticalAlignment.Bottom
 
 		-- toggle hint ----------------------------------------------------------
-		-- radius 18 rather than 19 so the 9-slice keeps a couple of pixels of centre
-		-- strip instead of butting the two corner slices together
-		local hint = shape(18, {
-			Parent = gui,
-			Color = C.Card,
-			AnchorPoint = Vector2.new(0.5, 1),
-			Position = UDim2.new(0.5, 0, 1, -24),
-			Size = UDim2.fromOffset(214, 38),
-			Transparency = 0.35,
-		})
-		outline(hint, 18, C.Stroke, 0.4)
+		-- A CanvasGroup, so the pill, its key glyph and its label fade as one unit
+		-- rather than the background dropping out from under the text.
+		local hint, hintText
+		if cfg.Hint ~= false then
+			hint = new("CanvasGroup", {
+				Parent = gui,
+				BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(0.5, 1),
+				Position = UDim2.new(0.5, 0, 1, -24),
+				Size = UDim2.fromOffset(214, 38),
+				GroupTransparency = 1,
+			})
 
-		icon("key", 15, C.Text2, {
-			Parent = hint,
-			AnchorPoint = Vector2.new(0, 0.5),
-			Position = UDim2.new(0, 18, 0.5, 0),
-		})
+			-- radius 18 rather than 19 so the 9-slice keeps a couple of pixels of
+			-- centre strip instead of butting the two corner slices together
+			local pill = shape(18, {
+				Parent = hint,
+				Color = C.Card,
+				Size = UDim2.fromScale(1, 1),
+				Transparency = 0.25,
+			})
+			outline(pill, 18, C.Stroke, 0.4)
 
-		local hintText = text({
-			Parent = hint,
-			Text = "",
-			RichText = true,
-			FontFace = F.Medium,
-			TextSize = T.Body,
-			Position = UDim2.fromOffset(42, 0),
-			Size = UDim2.new(1, -52, 1, 0),
-		})
+			icon("key", 15, C.Text2, {
+				Parent = pill,
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, 18, 0.5, 0),
+			})
+
+			hintText = text({
+				Parent = pill,
+				Text = "",
+				RichText = true,
+				FontFace = F.Medium,
+				TextSize = T.Body,
+				Position = UDim2.fromOffset(42, 0),
+				Size = UDim2.new(1, -52, 1, 0),
+			})
+		end
 
 		-- assemble -------------------------------------------------------------
 		local window = setmetatable({
@@ -2783,6 +2862,8 @@ __modules["Library"] = function()
 			_toasts = toasts,
 			_hint = hint,
 			_hintText = hintText,
+			_hintHold = cfg.HintDuration or 3.5,
+			_hintToken = 0,
 			_tabs = {},
 			_connections = {},
 			_visible = true,
@@ -2836,9 +2917,8 @@ __modules["Library"] = function()
 		Motion.to(scale, { Scale = 1 }, Motion.Bouncy)
 		window:_fade(0, Motion.Smooth)
 
-		Motion.set(hint, { [TP] = 1 })
 		task.delay(0.18, function()
-			Motion.to(hint, { [TP] = 0.35 }, Motion.Gentle)
+			window:_flashHint()
 		end)
 
 		table.insert(Library.Windows, window)
